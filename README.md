@@ -61,6 +61,16 @@ point:
 - **Attentional Identity** — mirrors the Level 3 selection.
 - **Dependency Tendency (SDT)** — tallies from Level 4's 5 situations.
 
+## Data persistence
+
+All entries (Time Assessment log, mind-sweep items, Level 3 tasks and
+identity choice, Level 4 situations, etc.) are saved to the browser's
+`localStorage` on every change, and reloaded automatically on the next
+visit. This is per-device/per-browser: it does not sync across devices,
+and it's wiped if the user clears their browser's site data. A "Clear
+saved data" link in the header lets a user wipe it and start over
+deliberately.
+
 ## Local development
 
 ```bash

@@ -328,15 +328,77 @@ const IDENTITIES = [
   },
 ];
 
+// ---- Local persistence: everything the user enters is saved to this
+// browser's localStorage so a refresh (or reopening the tab later) doesn't
+// lose it. This is per-device/per-browser only — it won't follow the user
+// to a different phone or browser, and clearing site data wipes it. ----
+const STORAGE_KEY = "leverage-app-state-v1";
+
+function loadPersistedState() {
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch (e) {
+    return null;
+  }
+}
+
 export default function LeverageApp() {
-  const [entries, setEntries] = useState([]);
-  const [mindSweepItems, setMindSweepItems] = useState([]);
-  const [topTasks, setTopTasks] = useState([freshTask()]);
-  const [identityChoice, setIdentityChoice] = useState(null);
-  const [situations, setSituations] = useState([freshSituation(), freshSituation(), freshSituation(), freshSituation(), freshSituation()]);
-  const [motivationReflections, setMotivationReflections] = useState({ Autonomy: "", Competence: "", Relatedness: "" });
-  const [fixCommitments, setFixCommitments] = useState(new Set());
-  const [activeTab, setActiveTab] = useState("level2");
+  const persisted = useRef(loadPersistedState()).current;
+
+  const [entries, setEntries] = useState(persisted?.entries ?? []);
+  const [mindSweepItems, setMindSweepItems] = useState(persisted?.mindSweepItems ?? []);
+  const [topTasks, setTopTasks] = useState(persisted?.topTasks ?? [freshTask()]);
+  const [identityChoice, setIdentityChoice] = useState(persisted?.identityChoice ?? null);
+  const [situations, setSituations] = useState(
+    persisted?.situations ?? [freshSituation(), freshSituation(), freshSituation(), freshSituation(), freshSituation()]
+  );
+  const [motivationReflections, setMotivationReflections] = useState(
+    persisted?.motivationReflections ?? { Autonomy: "", Competence: "", Relatedness: "" }
+  );
+  const [fixCommitments, setFixCommitments] = useState(new Set(persisted?.fixCommitments ?? []));
+  const [activeTab, setActiveTab] = useState(persisted?.activeTab ?? "level2");
+
+  // Persist on every change. Fails silently (e.g. private browsing, storage
+  // full) — the app still works for the rest of the session, it just won't
+  // survive a refresh in that case.
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          entries,
+          mindSweepItems,
+          topTasks,
+          identityChoice,
+          situations,
+          motivationReflections,
+          fixCommitments: Array.from(fixCommitments),
+          activeTab,
+        })
+      );
+    } catch (e) {
+      // ignore — storage unavailable or full
+    }
+  }, [entries, mindSweepItems, topTasks, identityChoice, situations, motivationReflections, fixCommitments, activeTab]);
+
+  function clearSavedData() {
+    if (typeof window !== "undefined" && !window.confirm("Clear all saved entries on this device? This can't be undone.")) return;
+    try {
+      window.localStorage.removeItem(STORAGE_KEY);
+    } catch (e) {
+      // ignore
+    }
+    setEntries([]);
+    setMindSweepItems([]);
+    setTopTasks([freshTask()]);
+    setIdentityChoice(null);
+    setSituations([freshSituation(), freshSituation(), freshSituation(), freshSituation(), freshSituation()]);
+    setMotivationReflections({ Autonomy: "", Competence: "", Relatedness: "" });
+    setFixCommitments(new Set());
+    setActiveTab("level2");
+  }
 
   const { total: totalHours, byType } = computeByType(entries);
   const { total: planningTotalHours, byType: planningByType } = computeByType(mindSweepItems.filter((i) => i.type && i.hours));
@@ -436,9 +498,18 @@ export default function LeverageApp() {
     <div style={{ minHeight: "100%", background: COLORS.bg, color: COLORS.text, fontFamily: "'IBM Plex Sans', -apple-system, sans-serif" }}>
       <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Fraunces:opsz,wght@9..144,400;9..144,600&display=swap" />
       <div style={{ padding: "20px 28px 0", borderBottom: `1px solid ${COLORS.hairline}` }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 16 }}>
-          <span style={{ fontFamily: "'Fraunces', serif", fontSize: 22, fontWeight: 600, letterSpacing: "0.02em" }}>Leverage</span>
-          <span style={{ color: COLORS.textMuted, fontSize: 14, fontStyle: "italic" }}>Leveling up from average to leverage.</span>
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, marginBottom: 16 }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+            <span style={{ fontFamily: "'Fraunces', serif", fontSize: 22, fontWeight: 600, letterSpacing: "0.02em" }}>Leverage</span>
+            <span style={{ color: COLORS.textMuted, fontSize: 14, fontStyle: "italic" }}>Leveling up from average to leverage.</span>
+          </div>
+          <button
+            onClick={clearSavedData}
+            style={{ background: "none", border: "none", color: COLORS.textMuted, fontSize: 12, cursor: "pointer", fontFamily: "inherit", textDecoration: "underline", padding: 0 }}
+            title="Erase all saved entries on this device and start fresh"
+          >
+            Clear saved data
+          </button>
         </div>
         <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
           {TABS.map((t) => (
