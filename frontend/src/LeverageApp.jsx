@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import { jsPDF } from "jspdf";
 
 // ---- Leverage brand tokens ----
 const COLORS = {
@@ -1343,9 +1344,129 @@ function AboutMe({ planningByType, planningTotalHours, mindSweepItems, topTasks,
   const sdtTally = rootCauseTally(situations);
   const sdtTotal = situations.filter((s) => s.rootCause).length;
 
+  function downloadPdfReport() {
+    const doc = new jsPDF({ unit: "pt", format: "a4" });
+    const marginX = 48;
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const maxWidth = pageWidth - marginX * 2;
+    let y = 56;
+
+    function ensureSpace(lineHeight) {
+      if (y + lineHeight > pageHeight - 48) {
+        doc.addPage();
+        y = 56;
+      }
+    }
+    function heading(text) {
+      ensureSpace(26);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(13);
+      doc.text(text, marginX, y);
+      y += 20;
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10.5);
+    }
+    function paragraph(text, opts = {}) {
+      const lines = doc.splitTextToSize(text, maxWidth);
+      lines.forEach((line) => {
+        ensureSpace(14);
+        doc.text(line, marginX + (opts.indent || 0), y);
+        y += 14;
+      });
+    }
+    function spacer(amount = 12) {
+      y += amount;
+    }
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(18);
+    doc.text("The Shell — About Me Report", marginX, y);
+    y += 18;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(110, 110, 110);
+    doc.text(new Date().toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" }), marginX, y);
+    doc.setTextColor(20, 20, 20);
+    spacer(20);
+
+    // Time Allocation
+    heading("Time Allocation (from Planning & Monitoring)");
+    if (planningTotalHours === 0) {
+      paragraph("No data yet — capture items with a type and hours in Level 2's Planning and Monitoring.");
+    } else {
+      paragraph(`Total tracked: ${planningTotalHours}h`);
+      spacer(4);
+      TYPES.forEach((t) => {
+        const items = typedItems.filter((i) => i.type === t);
+        if (!items.length) return;
+        paragraph(t + ":");
+        items.forEach((i) => paragraph(`- ${i.text} (${i.hours}h)`, { indent: 10 }));
+        spacer(4);
+      });
+    }
+    spacer(10);
+
+    // Strategic Attention Pattern
+    heading("Strategic Attention Pattern");
+    if (!hasQuadrantData) {
+      paragraph("No data yet — score your top 5 tasks in Level 3.");
+    } else {
+      Object.entries(quadrantCounts).forEach(([q, count]) => {
+        paragraph(`${q}: ${count} task${count > 1 ? "s" : ""}`);
+      });
+    }
+    spacer(10);
+
+    // RACI
+    heading("Delegation Reality (RACI)");
+    if (raPct === null) {
+      paragraph("No data yet — tag your Next Actions with RACI in Level 3.");
+    } else {
+      paragraph(`${raPct}% of tagged Next Actions are Responsible/Accountable — ${100 - raPct}% are Consulted/Informed.`);
+    }
+    spacer(10);
+
+    // Attentional Identity
+    heading("Attentional Identity");
+    if (!identity) {
+      paragraph("No data yet — choose your Attentional Identity in Level 3.");
+    } else {
+      paragraph(identity.name);
+      paragraph(`"${identity.quote}"`);
+      spacer(4);
+      paragraph("Core attention style: " + identity.attentionStyle.join(", "));
+      paragraph("Strategic strength: " + identity.strength.join(", "));
+      paragraph("Q2 blind spot: " + identity.blindSpot);
+      if (identity.raci) {
+        paragraph(`RACI tendency — R: ${identity.raci.R} | A: ${identity.raci.A} | C: ${identity.raci.C} | I: ${identity.raci.I}`);
+      } else if (identity.raciNote) {
+        paragraph("RACI tendency: " + identity.raciNote);
+      }
+      paragraph("Delegation pattern: " + identity.delegationPattern);
+      paragraph("Development move: " + identity.developmentMove);
+    }
+    spacer(10);
+
+    // SDT
+    heading("Dependency Tendency (Self Determination Theory)");
+    if (sdtTotal === 0) {
+      paragraph("No data yet — classify your dependency situations in Level 4.");
+    } else {
+      ROOT_CAUSES.forEach((rc) => {
+        if (sdtTally[rc] > 0) paragraph(`${rc}: ${sdtTally[rc]} situation${sdtTally[rc] > 1 ? "s" : ""}`);
+      });
+    }
+
+    doc.save("the-shell-about-me-report.pdf");
+  }
+
   return (
     <>
-      <h2 style={levelHeadingStyle}>About Me</h2>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, marginBottom: 8 }}>
+        <h2 style={{ ...levelHeadingStyle, marginBottom: 0 }}>About Me</h2>
+        <button onClick={downloadPdfReport} style={btnStyle(COLORS.strategic)}>Download PDF report</button>
+      </div>
       <SectionLabel>Time Allocation (from Planning &amp; Monitoring)</SectionLabel>
       {planningTotalHours === 0 ? (
         <div style={{ color: COLORS.textFaint, fontSize: 14, padding: "8px 0", marginBottom: 28 }}>Capture items with a type and hours in Level 2's Planning and Monitoring and this fills in automatically.</div>
