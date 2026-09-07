@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
 
 // ---- Leverage brand tokens ----
 const COLORS = {
@@ -328,6 +329,73 @@ const IDENTITIES = [
     developmentMove: "Balance strategic reflection with execution rhythm and organizational grounding.",
   },
 ];
+
+// Expanded detail for the PDF report only — strengths reuse identity.strength above;
+// this fills in a fuller weaknesses/blind-spots and development-opportunities list per
+// identity (the in-app card keeps the single-line versions on identity.blindSpot /
+// identity.developmentMove).
+const IDENTITY_REPORT_DETAILS = {
+  opportunist: {
+    weaknesses: [
+      "Long-term strategic investments can lose attention once urgency appears elsewhere.",
+      "Can mistake speed for progress, moving to the next opportunity before the current one is secured.",
+      "A very high Responsible/Accountable load paired with very low Consulted/Informed means input from others may be sought only after a direction is already set.",
+    ],
+    developmentOpportunities: [
+      "Build trust-based ownership systems instead of relying on direct control.",
+      "Before chasing the next opportunity, define what \"done\" looks like for the current one.",
+      "Deliberately loop others in earlier in a decision, not only once it's time to execute it.",
+    ],
+  },
+  diplomat: {
+    weaknesses: [
+      "Strategic conversations involving tension or disruption may lose attention.",
+      "Under-delegates even when a capable owner is available, to avoid the discomfort of reassigning work.",
+      "Can mistake \"this will cause friction\" for \"this doesn't matter,\" and defer accordingly.",
+    ],
+    developmentOpportunities: [
+      "Practice creating clarity and accountability without interpreting tension as relational threat.",
+      "Before deferring a task, name explicitly whether it's low-value or just uncomfortable.",
+      "Pick one recurring decision each month to hand off on purpose, even if it means a harder conversation up front.",
+    ],
+  },
+  expert: {
+    weaknesses: [
+      "Strategic movement may slow because attention stays trapped in execution details.",
+      "Delegation can feel risky, since expertise gets unconsciously tied to personal ownership.",
+      "A very low Informed tendency means others may be told the outcome rather than brought into the reasoning.",
+    ],
+    developmentOpportunities: [
+      "Separate personal expertise from organizational scalability — value isn't only in doing the work, it's in creating systems where quality scales through others.",
+      "Practice delegating one technically demanding task per month, accepting a different (not worse) approach.",
+      "Build in a deliberate step to share the \"why,\" not just the \"what,\" when handing off work.",
+    ],
+  },
+  achiever: {
+    weaknesses: [
+      "Reflection and long-term strategic thinking may receive less attention than hitting the next deadline.",
+      "Measuring progress only by visible output can undervalue groundwork that doesn't show results immediately.",
+      "Momentum can substitute for direction — moving fast without regularly checking it's the right direction.",
+    ],
+    developmentOpportunities: [
+      "Move beyond execution optimization toward systems reflection, capability building, and strategic space creation.",
+      "Schedule reflection time with the same seriousness as a deadline, not as leftover time.",
+      "Ask periodically: not everything valuable produces immediate measurable output — what's this quarter's invisible work?",
+    ],
+  },
+  strategist: {
+    weaknesses: [
+      "May spend extensive time in strategic reflection before operational movement begins.",
+      "Balancing all four RACI roles at once can blur who's actually accountable for near-term execution.",
+      "Long-term systems thinking can outpace the organization's current capacity to absorb change.",
+    ],
+    developmentOpportunities: [
+      "Balance strategic reflection with execution rhythm and organizational grounding.",
+      "Set a firm point at which reflection converts into a first concrete action, even a small one.",
+      "Pair each systemic change with a named, accountable owner for the near-term rollout.",
+    ],
+  },
+};
 
 // ---- Local persistence: everything the user enters is saved to this
 // browser's localStorage so a refresh (or reopening the tab later) doesn't
@@ -1350,6 +1418,13 @@ function AboutMe({ planningByType, planningTotalHours, mindSweepItems, topTasks,
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
     const maxWidth = pageWidth - marginX * 2;
+    const CREAM = [251, 246, 238];
+    const TERRACOTTA_LIGHT = [240, 153, 123];
+    const TERRACOTTA = [216, 90, 48];
+    const TERRACOTTA_DARK = [153, 60, 29];
+    const BROWN = [74, 27, 12];
+    const TEXT = [42, 42, 42];
+    const MUTED = [110, 110, 110];
     let y = 56;
 
     function ensureSpace(lineHeight) {
@@ -1358,107 +1433,313 @@ function AboutMe({ planningByType, planningTotalHours, mindSweepItems, topTasks,
         y = 56;
       }
     }
-    function heading(text) {
-      ensureSpace(26);
+    function setColor(rgb) { doc.setTextColor(rgb[0], rgb[1], rgb[2]); }
+    function heading(text, color = TERRACOTTA_DARK) {
+      ensureSpace(24);
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(13);
+      doc.setFontSize(11.5);
+      setColor(color);
       doc.text(text, marginX, y);
-      y += 20;
+      y += 18;
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(10.5);
+      doc.setFontSize(10);
+      setColor(TEXT);
     }
     function paragraph(text, opts = {}) {
-      const lines = doc.splitTextToSize(text, maxWidth);
+      doc.setFont("helvetica", opts.italic ? "italic" : "normal");
+      doc.setFontSize(opts.size || 10);
+      setColor(opts.color || TEXT);
+      const lines = doc.splitTextToSize(text, maxWidth - (opts.indent || 0));
       lines.forEach((line) => {
         ensureSpace(14);
         doc.text(line, marginX + (opts.indent || 0), y);
         y += 14;
       });
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      setColor(TEXT);
     }
-    function spacer(amount = 12) {
-      y += amount;
+    function bulletList(lines, opts = {}) {
+      lines.forEach((line) => paragraph("• " + line, { ...opts, indent: (opts.indent || 0) + 4 }));
     }
+    function insightBox(text) {
+      spacer(4);
+      const innerWidth = maxWidth - 20;
+      doc.setFont("helvetica", "italic");
+      doc.setFontSize(10);
+      const lines = doc.splitTextToSize(text, innerWidth);
+      const boxHeight = lines.length * 14 + 14;
+      ensureSpace(boxHeight + 6);
+      doc.setFillColor(CREAM[0], CREAM[1], CREAM[2]);
+      doc.rect(marginX, y - 4, maxWidth, boxHeight, "F");
+      let ty = y + 10;
+      setColor(BROWN);
+      lines.forEach((line) => {
+        doc.text(line, marginX + 10, ty);
+        ty += 14;
+      });
+      y += boxHeight + 6;
+      doc.setFont("helvetica", "normal");
+      setColor(TEXT);
+    }
+    function spacer(amount = 12) { y += amount; }
+    function levelBanner(text, color) {
+      ensureSpace(30);
+      doc.setFillColor(color[0], color[1], color[2]);
+      doc.rect(marginX, y - 14, maxWidth, 26, "F");
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(13);
+      doc.setTextColor(255, 255, 255);
+      doc.text(text, marginX + 10, y + 4);
+      y += 30;
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      setColor(TEXT);
+    }
+    function newPage() { doc.addPage(); y = 56; }
 
+    // ---- Cover ----
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(18);
-    doc.text("The Shell — About Me Report", marginX, y);
+    doc.setFontSize(22);
+    setColor(BROWN);
+    doc.text("My Leverage Report", marginX, y);
     y += 18;
+    doc.setFont("helvetica", "italic");
+    doc.setFontSize(10.5);
+    setColor(TERRACOTTA_DARK);
+    doc.text("leveling up from average to leverage", marginX, y);
+    y += 16;
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(10);
-    doc.setTextColor(110, 110, 110);
+    doc.setFontSize(9);
+    setColor(MUTED);
     doc.text(new Date().toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" }), marginX, y);
-    doc.setTextColor(20, 20, 20);
-    spacer(20);
+    y += 18;
+    paragraph(
+      "This report pulls together everything you've captured across Levels 2 through 4 of the Leverage program into one narrative view of how you're actually spending and directing your time. Each section below is drawn directly from your own entries."
+    );
+    spacer(10);
 
-    // Time Allocation
-    heading("Time Allocation (from Planning & Monitoring)");
+    // ---- Level 2 (same page as cover) ----
+    levelBanner("Level 2 — Structured Productivity", TERRACOTTA);
+    spacer(4);
+    paragraph(
+      "Level 2 is about seeing where your time actually goes versus where you assume it goes, then giving every open loop a proper home — on your calendar, a waiting-on list, or a next action."
+    );
+    heading("Time Allocation");
     if (planningTotalHours === 0) {
       paragraph("No data yet — capture items with a type and hours in Level 2's Planning and Monitoring.");
     } else {
-      paragraph(`Total tracked: ${planningTotalHours}h`);
-      spacer(4);
-      TYPES.forEach((t) => {
-        const items = typedItems.filter((i) => i.type === t);
-        if (!items.length) return;
-        paragraph(t + ":");
-        items.forEach((i) => paragraph(`- ${i.text} (${i.hours}h)`, { indent: 10 }));
-        spacer(4);
+      const rows = TYPES
+        .map((t) => ({ t, hrs: typedItems.filter((i) => i.type === t).reduce((s, i) => s + Number(i.hours || 0), 0) }))
+        .filter((x) => x.hrs > 0)
+        .sort((a, b) => b.hrs - a.hrs);
+      autoTable(doc, {
+        startY: y,
+        margin: { left: marginX, right: marginX },
+        head: [["Category", "Hours", "Share"]],
+        body: rows.map((r) => [r.t, `${r.hrs}h`, `${Math.round((r.hrs / planningTotalHours) * 100)}%`]),
+        theme: "grid",
+        styles: { font: "helvetica", fontSize: 9.5, textColor: TEXT, lineColor: TERRACOTTA_LIGHT, lineWidth: 0.5, cellPadding: 5 },
+        headStyles: { fillColor: TERRACOTTA_LIGHT, textColor: [255, 255, 255], fontStyle: "bold" },
+        alternateRowStyles: { fillColor: CREAM },
+        columnStyles: { 0: { cellWidth: 220 }, 1: { cellWidth: 110 }, 2: { cellWidth: 110 } },
       });
-    }
-    spacer(10);
+      y = doc.lastAutoTable.finalY + 14;
 
-    // Strategic Attention Pattern
-    heading("Strategic Attention Pattern");
+      const top = rows[0];
+      const strategicEntry = rows.find((x) => x.t === "Strategic");
+      const strategicPct = strategicEntry ? Math.round((strategicEntry.hrs / planningTotalHours) * 100) : 0;
+      let insight;
+      if (top && top.t === "Strategic") {
+        insight = `Strategic work is your largest tracked category at ${Math.round((top.hrs / planningTotalHours) * 100)}%. That's a strong signal you're protecting time for longer-term impact rather than letting it get crowded out.`;
+      } else if (strategicPct < 20) {
+        insight = `What this shows: Strategic work is only ${strategicPct}% of your tracked time, while ${top.t} takes the largest share. That's a common pattern early in Level 2 — operational work fills the week first, and strategic time survives only if it's deliberately protected.`;
+      } else {
+        insight = `What this shows: your time is fairly spread across categories, with ${top.t} taking the largest share at ${Math.round((top.hrs / planningTotalHours) * 100)}%. Worth checking whether that balance matches where you actually want your attention going.`;
+      }
+      insightBox(insight);
+    }
+
+    // ---- Level 3 (own page) ----
+    newPage();
+    levelBanner("Level 3 — Strategic Time Management", TERRACOTTA_DARK);
+    spacer(4);
+    paragraph(
+      "Level 3 shifts the lens from how much time you spend to how well-placed it is — which tasks are genuinely worth your attention, who else should own pieces of your workload, and how your own attentional style shapes both of those answers."
+    );
+
+    heading("Strategic Attention & Leak Score");
     if (!hasQuadrantData) {
       paragraph("No data yet — score your top 5 tasks in Level 3.");
     } else {
+      paragraph("Your top time-consuming tasks landed across the four quadrants as follows:");
+      spacer(2);
       Object.entries(quadrantCounts).forEach(([q, count]) => {
-        paragraph(`${q}: ${count} task${count > 1 ? "s" : ""}`);
+        bulletList([`${q}: ${count} task${count > 1 ? "s" : ""}`]);
       });
+      const highLeakHigh = quadrantCounts["High Leverage / High Leak"] || 0;
+      let quadInsight;
+      if (highLeakHigh > 0) {
+        quadInsight = `What this shows: ${highLeakHigh} task${highLeakHigh > 1 ? "s are" : " is"} both high-leverage and high-leak — meaning it matters a lot and is currently costing you more than it should. That's usually the single highest-value task to redesign or delegate first.`;
+      } else {
+        quadInsight = "What this shows: nothing landed in the high-leverage/high-leak quadrant, which is a good sign — your highest-value work isn't currently leaking time unnecessarily.";
+      }
+      insightBox(quadInsight);
     }
-    spacer(10);
 
-    // RACI
     heading("Delegation Reality (RACI)");
     if (raPct === null) {
       paragraph("No data yet — tag your Next Actions with RACI in Level 3.");
     } else {
       paragraph(`${raPct}% of tagged Next Actions are Responsible/Accountable — ${100 - raPct}% are Consulted/Informed.`);
+      let raciInsight;
+      if (raPct >= 60) {
+        raciInsight = `What this shows: ${raPct}% of your open next actions still require your direct ownership. Worth cross-checking against your Attentional Identity below — some identities naturally under-delegate even when the option is available.`;
+      } else if (raPct <= 40) {
+        raciInsight = `What this shows: a majority of your tagged next actions are Consulted/Informed rather than yours to execute directly — a sign delegation is genuinely working, not just planned.`;
+      } else {
+        raciInsight = "What this shows: a fairly even split between direct ownership and a supporting role — worth noticing whether that's a deliberate choice or just how things landed.";
+      }
+      insightBox(raciInsight);
     }
-    spacer(10);
 
-    // Attentional Identity
-    heading("Attentional Identity");
+    function identityColorRgb(hexOrVar) {
+      // identity.color values are COLORS.<key> hex strings already resolved in JS
+      const hex = (hexOrVar || "#993C1D").replace("#", "");
+      if (hex.length !== 6) return TERRACOTTA_DARK;
+      return [parseInt(hex.slice(0,2),16), parseInt(hex.slice(2,4),16), parseInt(hex.slice(4,6),16)];
+    }
+    const RACI_LEVEL_SCORE = { "VERY LOW": 1, LOW: 2, "LOW-MODERATE": 2.5, MODERATE: 3, HIGH: 4, "VERY HIGH": 5 };
+
+    function cardLabel(text) {
+      ensureSpace(14);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8.5);
+      setColor(MUTED);
+      doc.text(text.toUpperCase(), marginX + 16, y);
+      y += 12;
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      setColor(TEXT);
+    }
+    function cardParagraph(text) { paragraph(text, { indent: 16 }); spacer(6); }
+    function cardBullets(lines) { bulletList(lines, { indent: 16 }); spacer(6); }
+
+    heading("Attentional Identity" + (identity ? `: ${identity.name}` : ""));
     if (!identity) {
       paragraph("No data yet — choose your Attentional Identity in Level 3.");
     } else {
-      paragraph(identity.name);
-      paragraph(`"${identity.quote}"`);
+      const accent = identityColorRgb(identity.color);
+      const cardTop = y;
+      // measure content height first isn't trivial with variable text, so we draw the
+      // left accent border as we go by tracking start/end y and drawing at the end.
       spacer(4);
-      paragraph("Core attention style: " + identity.attentionStyle.join(", "));
-      paragraph("Strategic strength: " + identity.strength.join(", "));
-      paragraph("Q2 blind spot: " + identity.blindSpot);
-      if (identity.raci) {
-        paragraph(`RACI tendency — R: ${identity.raci.R} | A: ${identity.raci.A} | C: ${identity.raci.C} | I: ${identity.raci.I}`);
-      } else if (identity.raciNote) {
-        paragraph("RACI tendency: " + identity.raciNote);
-      }
-      paragraph("Delegation pattern: " + identity.delegationPattern);
-      paragraph("Development move: " + identity.developmentMove);
-    }
-    spacer(10);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(13);
+      setColor(TEXT);
+      ensureSpace(18);
+      doc.text(identity.name, marginX + 16, y);
+      y += 16;
+      paragraph(`"${identity.quote}"`, { italic: true, color: MUTED, indent: 16 });
+      spacer(8);
 
-    // SDT
-    heading("Dependency Tendency (Self Determination Theory)");
+      const details = IDENTITY_REPORT_DETAILS[identity.key];
+
+      cardLabel("Core Attention Style");
+      cardParagraph(identity.attentionStyle.join(" · "));
+
+      cardLabel("Strengths");
+      cardBullets(identity.strength);
+
+      cardLabel("RACI Tendency");
+      if (identity.raci) {
+        ["R", "A", "C", "I"].forEach((letter) => {
+          ensureSpace(14);
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(9);
+          setColor(TEXT);
+          doc.text(letter, marginX + 16, y + 6);
+          const barX = marginX + 32;
+          const barW = 140;
+          doc.setFillColor(235, 230, 222);
+          doc.rect(barX, y, barW, 6, "F");
+          const pct = (RACI_LEVEL_SCORE[identity.raci[letter]] || 0) / 5;
+          doc.setFillColor(accent[0], accent[1], accent[2]);
+          doc.rect(barX, y, barW * pct, 6, "F");
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(9);
+          setColor(MUTED);
+          doc.text(identity.raci[letter], barX + barW + 8, y + 6);
+          y += 14;
+        });
+        spacer(6);
+      } else if (identity.raciNote) {
+        cardParagraph(identity.raciNote);
+      }
+
+      cardLabel("Weaknesses / Blind Spots");
+      cardBullets(details ? details.weaknesses : [identity.blindSpot]);
+
+      cardLabel("Delegation Pattern");
+      cardParagraph(identity.delegationPattern);
+
+      cardLabel("Development Opportunities");
+      cardBullets(details ? details.developmentOpportunities : [identity.developmentMove]);
+
+      // left accent border for the whole card, drawn last now that we know the extent
+      doc.setDrawColor(accent[0], accent[1], accent[2]);
+      doc.setLineWidth(2.5);
+      doc.line(marginX + 2, cardTop - 6, marginX + 2, y - 4);
+      doc.setLineWidth(1);
+
+      insightBox(
+        "What this shows: your strengths and blind spots aren't separate traits — they're two sides of the same style. The instinct that makes you effective in the situations above is often exactly what makes the flagged blind spots easy to slide into."
+      );
+    }
+
+    // ---- Level 4 (own page) ----
+    newPage();
+    levelBanner("Level 4 — Time Leverage and Systems Design", BROWN);
+    spacer(4);
+    paragraph(
+      "Level 4 looks underneath the surface of delegation and dependency to ask why a situation keeps recurring — using Self Determination Theory's three root causes: Autonomy, Competence, and Relatedness."
+    );
+
+    heading("Dependency Tendency (SDT)");
     if (sdtTotal === 0) {
       paragraph("No data yet — classify your dependency situations in Level 4.");
     } else {
       ROOT_CAUSES.forEach((rc) => {
-        if (sdtTally[rc] > 0) paragraph(`${rc}: ${sdtTally[rc]} situation${sdtTally[rc] > 1 ? "s" : ""}`);
+        if (sdtTally[rc] > 0) bulletList([`${rc}: ${sdtTally[rc]} situation${sdtTally[rc] > 1 ? "s" : ""}`]);
       });
+      const dominant = ROOT_CAUSES.reduce((a, b) => (sdtTally[b] > (sdtTally[a] || 0) ? b : a), ROOT_CAUSES[0]);
+      const sdtNotes = {
+        Autonomy: "the majority of your situations trace back to Autonomy — people coming to you for a decision rather than making it themselves.",
+        Competence: "the majority of your situations trace back to Competence — people relying on you because they don't yet have the skill or confidence to act alone.",
+        Relatedness: "the majority of your situations trace back to Relatedness — people looping you in to preserve a relationship or avoid stepping on toes, not because the decision truly needs you.",
+      };
+      insightBox(`What this shows: ${sdtNotes[dominant]}${identity ? ` Read alongside your ${identity.name} identity, this is worth sitting with rather than dismissing as just "how things are."` : ""}`);
     }
 
-    doc.save("the-shell-about-me-report.pdf");
+    // ---- Closing ----
+    spacer(10);
+    doc.setDrawColor(TERRACOTTA_LIGHT[0], TERRACOTTA_LIGHT[1], TERRACOTTA_LIGHT[2]);
+    ensureSpace(20);
+    doc.line(marginX, y, marginX + maxWidth, y);
+    spacer(14);
+    const closingParts = [];
+    if (identity) closingParts.push(`a ${identity.name} attentional style`);
+    if (raPct !== null) closingParts.push(raPct >= 60 ? "a heavy direct-ownership load" : raPct <= 40 ? "genuine delegation in practice" : "a fairly balanced ownership split");
+    if (sdtTotal > 0) {
+      const dominant = ROOT_CAUSES.reduce((a, b) => (sdtTally[b] > (sdtTally[a] || 0) ? b : a), ROOT_CAUSES[0]);
+      closingParts.push(`a recurring ${dominant.toLowerCase()} pattern in Level 4`);
+    }
+    const closingText = closingParts.length
+      ? `Across the levels captured so far, a picture emerges from ${closingParts.join(", ")}. Where these threads point in the same direction is usually the clearest place to start.`
+      : "Fill in more of Levels 2 through 4 to build out a fuller picture here.";
+    paragraph(closingText, { italic: true, color: BROWN });
+
+    doc.save("my-leverage-report.pdf");
   }
 
   return (
